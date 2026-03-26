@@ -2,7 +2,8 @@
   "use strict";
 
   // ── Map setup ────────────────────────────────────────────
-  const map = L.map("map").setView([20, 0], 2);
+  const map = L.map("map", { preferCanvas: true }).setView([20, 0], 2);
+  window.addEventListener("load", () => map.invalidateSize());
   L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
     attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
     maxZoom: 19,

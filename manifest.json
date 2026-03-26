@@ -1,0 +1,14 @@
+{
+  "name": "Calendar Map",
+  "short_name": "Cal Map",
+  "description": "Plot Apple Calendar event locations on a map",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#1c1c1e",
+  "theme_color": "#000000",
+  "orientation": "any",
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png" }
+  ]
+}

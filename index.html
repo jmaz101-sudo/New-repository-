@@ -1,0 +1,353 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="Cal Map" />
+  <meta name="theme-color" content="#000000" />
+  <link rel="manifest" href="manifest.json" />
+  <title>Calendar Map</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --safe-top: env(safe-area-inset-top, 0px);
+      --safe-bottom: env(safe-area-inset-bottom, 0px);
+      --accent: #0a84ff;
+      --red: #ff453a;
+      --green: #30d158;
+      --bg: #1c1c1e;
+      --card: #2c2c2e;
+      --border: #3a3a3c;
+      --text: #ffffff;
+      --subtext: #ebebf599;
+      --sheet-height: 340px;
+    }
+
+    html, body { height: 100%; background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif; overflow: hidden; }
+
+    /* ── Map ── */
+    #map { position: fixed; inset: 0; z-index: 0; }
+
+    /* ── Top bar ── */
+    #topbar {
+      position: fixed; top: 0; left: 0; right: 0; z-index: 10;
+      padding: calc(var(--safe-top) + 12px) 16px 12px;
+      background: linear-gradient(to bottom, rgba(0,0,0,0.7) 0%, transparent 100%);
+      display: flex; align-items: center; justify-content: space-between;
+      pointer-events: none;
+    }
+    #topbar h1 { font-size: 17px; font-weight: 600; color: #fff; pointer-events: none; }
+    #upload-btn {
+      pointer-events: all;
+      display: flex; align-items: center; gap: 6px;
+      background: var(--accent); color: #fff;
+      border: none; border-radius: 20px;
+      padding: 7px 14px; font-size: 14px; font-weight: 600;
+      cursor: pointer; -webkit-tap-highlight-color: transparent;
+    }
+    #upload-btn svg { flex-shrink: 0; }
+    #file-input { display: none; }
+
+    /* ── Bottom sheet ── */
+    #sheet {
+      position: fixed; bottom: 0; left: 0; right: 0; z-index: 10;
+      background: rgba(28,28,30,0.95);
+      -webkit-backdrop-filter: blur(20px); backdrop-filter: blur(20px);
+      border-radius: 16px 16px 0 0;
+      border-top: 1px solid var(--border);
+      transition: transform 0.35s cubic-bezier(0.32,0.72,0,1);
+      transform: translateY(calc(100% - 56px - var(--safe-bottom)));
+      padding-bottom: var(--safe-bottom);
+      touch-action: none;
+    }
+    #sheet.open { transform: translateY(0); }
+
+    #sheet-handle-area {
+      display: flex; flex-direction: column; align-items: center;
+      padding: 10px 16px 8px; cursor: pointer; user-select: none;
+      -webkit-tap-highlight-color: transparent;
+    }
+    #sheet-handle { width: 36px; height: 4px; border-radius: 2px; background: var(--border); margin-bottom: 10px; }
+    #sheet-title { font-size: 13px; font-weight: 600; color: var(--subtext); text-transform: uppercase; letter-spacing: 0.5px; }
+
+    #event-scroll {
+      overflow-y: auto; -webkit-overflow-scrolling: touch;
+      max-height: calc(var(--sheet-height) - 56px);
+      padding: 0 12px 12px;
+    }
+
+    /* ── Status ── */
+    #status-bar {
+      display: none; margin: 0 12px 10px;
+      background: var(--card); border-radius: 10px;
+      padding: 10px 12px; font-size: 13px; color: var(--subtext);
+    }
+    #status-bar.visible { display: block; }
+    #status-bar.error { color: var(--red); }
+
+    #progress-wrap { margin-top: 8px; height: 4px; background: var(--border); border-radius: 2px; overflow: hidden; display: none; }
+    #progress-wrap.visible { display: block; }
+    #progress-bar { height: 100%; background: var(--accent); border-radius: 2px; transition: width 0.3s; width: 0%; }
+
+    /* ── Event cards ── */
+    .event-card {
+      background: var(--card); border-radius: 12px;
+      padding: 11px 13px; margin-bottom: 8px;
+      border-left: 3px solid var(--green);
+      cursor: pointer; -webkit-tap-highlight-color: transparent;
+      transition: opacity 0.15s;
+    }
+    .event-card:active { opacity: 0.7; }
+    .event-card.no-geo { border-left-color: var(--border); cursor: default; opacity: 0.5; }
+    .event-title { font-size: 14px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .event-meta { font-size: 12px; color: var(--subtext); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+    /* ── Empty state ── */
+    #empty {
+      text-align: center; padding: 24px 16px;
+      color: var(--subtext); font-size: 14px; line-height: 1.5;
+    }
+
+    /* ── Leaflet overrides for dark ── */
+    .leaflet-popup-content-wrapper { background: var(--card); color: var(--text); border: 1px solid var(--border); box-shadow: 0 4px 20px rgba(0,0,0,0.5); }
+    .leaflet-popup-tip { background: var(--card); }
+    .leaflet-popup-content { font-family: -apple-system, sans-serif; font-size: 13px; line-height: 1.5; }
+    .leaflet-popup-content strong { font-size: 14px; }
+    .leaflet-container { background: #1a1a2e; }
+  </style>
+</head>
+<body>
+
+<div id="map"></div>
+
+<div id="topbar">
+  <h1>Calendar Map</h1>
+  <button id="upload-btn">
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+    Import .ics
+  </button>
+  <input type="file" id="file-input" accept=".ics" />
+</div>
+
+<div id="sheet">
+  <div id="sheet-handle-area">
+    <div id="sheet-handle"></div>
+    <div id="sheet-title">Events</div>
+  </div>
+
+  <div id="status-bar"></div>
+  <div id="progress-wrap"><div id="progress-bar"></div></div>
+
+  <div id="event-scroll">
+    <div id="empty">Import a calendar .ics file<br>to see event locations on the map.</div>
+    <div id="event-list"></div>
+  </div>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+(function () {
+"use strict";
+
+// ── Map ──────────────────────────────────────────────────
+const map = L.map("map", { zoomControl: false }).setView([20, 0], 2);
+L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", {
+  attribution: '&copy; <a href="https://carto.com/">CARTO</a>',
+  maxZoom: 19,
+}).addTo(map);
+L.control.zoom({ position: "topright" }).addTo(map);
+window.addEventListener("load", () => map.invalidateSize());
+
+const markerLayer = L.layerGroup().addTo(map);
+
+// ── UI refs ──────────────────────────────────────────────
+const fileInput   = document.getElementById("file-input");
+const uploadBtn   = document.getElementById("upload-btn");
+const sheet       = document.getElementById("sheet");
+const sheetHandle = document.getElementById("sheet-handle-area");
+const statusBar   = document.getElementById("status-bar");
+const progressWrap= document.getElementById("progress-wrap");
+const progressBar = document.getElementById("progress-bar");
+const eventList   = document.getElementById("event-list");
+const emptyState  = document.getElementById("empty");
+
+uploadBtn.addEventListener("click", () => fileInput.click());
+fileInput.addEventListener("change", () => {
+  if (fileInput.files.length) processFile(fileInput.files[0]);
+});
+
+// ── Sheet toggle ─────────────────────────────────────────
+let sheetOpen = false;
+sheetHandle.addEventListener("click", () => {
+  sheetOpen = !sheetOpen;
+  sheet.classList.toggle("open", sheetOpen);
+  map.invalidateSize();
+});
+
+// ── ICS parser ───────────────────────────────────────────
+function parseICS(text) {
+  // Unfold lines (RFC 5545 §3.1)
+  const unfolded = text.replace(/\r\n[ \t]/g, "").replace(/\n[ \t]/g, "");
+  const lines = unfolded.split(/\r?\n/);
+
+  const events = [];
+  let inEvent = false;
+  let current = {};
+
+  for (const raw of lines) {
+    const line = raw.trim();
+    if (line === "BEGIN:VEVENT") { inEvent = true; current = {}; continue; }
+    if (line === "END:VEVENT") {
+      inEvent = false;
+      if (current.location) events.push(current);
+      continue;
+    }
+    if (!inEvent) continue;
+
+    const colon = line.indexOf(":");
+    if (colon === -1) continue;
+    const key   = line.slice(0, colon).split(";")[0].toUpperCase();
+    const value = unescapeICS(line.slice(colon + 1));
+
+    if (key === "SUMMARY")  current.summary  = value;
+    if (key === "LOCATION") current.location = value.trim();
+    if (key === "DTSTART")  current.date     = parseDate(line.slice(colon + 1));
+  }
+  return events;
+}
+
+function unescapeICS(val) {
+  return val.replace(/\\n/g, "\n").replace(/\\,/g, ",").replace(/\\;/g, ";").replace(/\\\\/g, "\\");
+}
+
+function parseDate(val) {
+  // Strip TZID or VALUE params — just grab digits
+  const digits = val.replace(/[^0-9]/g, "");
+  if (digits.length >= 8) {
+    const y = digits.slice(0,4), m = digits.slice(4,6), d = digits.slice(6,8);
+    return `${y}-${m}-${d}`;
+  }
+  return "";
+}
+
+// ── Geocoding (Nominatim) ────────────────────────────────
+const geoCache = {};
+
+async function geocode(location) {
+  if (location in geoCache) return geoCache[location];
+  const url = "https://nominatim.openstreetmap.org/search?" + new URLSearchParams({
+    q: location, format: "json", limit: 1,
+  });
+  try {
+    const resp = await fetch(url, { headers: { "Accept-Language": "en" } });
+    const data = await resp.json();
+    const result = data.length ? { lat: parseFloat(data[0].lat), lon: parseFloat(data[0].lon), display: data[0].display_name } : null;
+    geoCache[location] = result;
+    return result;
+  } catch { return null; }
+}
+
+function delay(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+// ── Process file ─────────────────────────────────────────
+async function processFile(file) {
+  const text = await file.text();
+  const events = parseICS(text);
+
+  markerLayer.clearLayers();
+  eventList.innerHTML = "";
+  emptyState.style.display = "none";
+
+  if (!events.length) {
+    showStatus("No events with locations found.", true);
+    sheetOpen = true; sheet.classList.add("open");
+    return;
+  }
+
+  showStatus(`Found ${events.length} event${events.length !== 1 ? "s" : ""} with locations. Geocoding…`);
+  progressWrap.classList.add("visible");
+  sheetOpen = true; sheet.classList.add("open");
+
+  const uniqueLocs = [...new Set(events.map(e => e.location))];
+  const geoResults = {};
+  for (let i = 0; i < uniqueLocs.length; i++) {
+    geoResults[uniqueLocs[i]] = await geocode(uniqueLocs[i]);
+    progressBar.style.width = Math.round(((i + 1) / uniqueLocs.length) * 100) + "%";
+    if (i < uniqueLocs.length - 1) await delay(1100); // Nominatim 1 req/sec
+  }
+
+  progressWrap.classList.remove("visible");
+  progressBar.style.width = "0%";
+
+  const bounds = [];
+  let mapped = 0;
+
+  events.forEach(ev => {
+    const geo = geoResults[ev.location];
+    const card = document.createElement("div");
+    card.className = "event-card" + (geo ? "" : " no-geo");
+
+    const title = document.createElement("div");
+    title.className = "event-title";
+    title.textContent = ev.summary || "Untitled";
+
+    const meta = document.createElement("div");
+    meta.className = "event-meta";
+    meta.textContent = (ev.date ? ev.date + "  ·  " : "") + ev.location;
+
+    card.appendChild(title);
+    card.appendChild(meta);
+    eventList.appendChild(card);
+
+    if (!geo) return;
+    mapped++;
+    bounds.push([geo.lat, geo.lon]);
+
+    const marker = L.circleMarker([geo.lat, geo.lon], {
+      radius: 9, fillColor: "#0a84ff", color: "#fff",
+      weight: 2, fillOpacity: 0.9,
+    });
+    marker.bindPopup(
+      `<strong>${esc(ev.summary || "Untitled")}</strong>` +
+      (ev.date ? `<br><span style="color:#8e8e93">${esc(ev.date)}</span>` : "") +
+      `<br>${esc(ev.location)}`
+    );
+    marker.addTo(markerLayer);
+
+    card.addEventListener("click", () => {
+      sheetOpen = false; sheet.classList.remove("open");
+      map.setView([geo.lat, geo.lon], 14, { animate: true });
+      marker.openPopup();
+    });
+  });
+
+  const failed = events.length - mapped;
+  showStatus(`${mapped} location${mapped !== 1 ? "s" : ""} mapped${failed ? `, ${failed} not found` : ""}.`);
+
+  if (bounds.length) map.fitBounds(bounds, { padding: [60, 60] });
+  map.invalidateSize();
+}
+
+function showStatus(msg, isError = false) {
+  statusBar.textContent = msg;
+  statusBar.className = "status-bar visible" + (isError ? " error" : "");
+  statusBar.style.display = "block";
+}
+
+function esc(s) {
+  return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+}
+
+// ── Service Worker ───────────────────────────────────────
+if ("serviceWorker" in navigator) {
+  navigator.serviceWorker.register("sw.js").catch(() => {});
+}
+
+})();
+</script>
+</body>
+</html>
